@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Which pages are losing search traffic, and does age explain it?</title>
+<meta name="description" content="A client-grouped validation of a simple rule and a decision tree for flagging declining content, on 30,000 pseudonymised pages from 32 clients.">
+<style>
+  :root { --fg:#1b1b1b; --muted:#555; --bg:#fff; --line:#ddd; --accent:#1f4e79; --soft:#f4f7fa; }
+  @media (prefers-color-scheme: dark) { :root { --fg:#e8e8e8; --muted:#a9a9a9; --bg:#15181c; --line:#333; --accent:#8fb8e0; --soft:#1d2228; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.65 Georgia, "Times New Roman", serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 1.9rem; line-height:1.25; margin: 0 0 .3em; }
+  h2 { font-size: 1.3rem; margin: 2.2em 0 .5em; border-top:1px solid var(--line); padding-top:1em; }
+  h1, h2, h3, table, figcaption, .meta { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .meta { color:var(--muted); font-size:.9rem; }
+  .abstract { background:var(--soft); border-left:4px solid var(--accent); padding:1em 1.2em; margin:1.5em 0; }
+  .abstract h2 { border:0; padding:0; margin:0 0 .4em; font-size:1.1rem; }
+  figure { margin: 1.5em 0; }
+  figure img { width:100%; height:auto; border:1px solid var(--line); background:#fff; }
+  figcaption { font-size:.92rem; color:var(--muted); margin-top:.5em; }
+  table { border-collapse:collapse; width:100%; font-size:.9rem; margin:1em 0; display:block; overflow-x:auto; }
+  th, td { border:1px solid var(--line); padding:.45em .6em; text-align:left; vertical-align:top; }
+  th { background:var(--soft); }
+  td.num, th.num { text-align:right; white-space:nowrap; }
+  a { color:var(--accent); }
+  code { font-size:.88em; background:var(--soft); padding:.1em .3em; }
+  .note { font-size:.9rem; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Which pages are losing search traffic, and does age explain it?</h1>
+<p class="meta">Sarah Ismail Ibdah &middot; FlyRank ML Internship &middot; November 2026</p>
+
+<section class="abstract">
+<h2>Abstract</h2>
+<p>An editor can review only a few dozen pages a week, so which pages should come first? We asked whether a page's age and recent traffic can flag content that is losing search impressions, and whether a trained decision tree beats a one-line age rule. We used 30,000 pseudonymised pages from 32 clients in FlyRank's internship dataset, labelling a page as declining when its impressions in the last 30 days fell more than 20% below the 30 days before, and we validated with client-grouped folds plus a leakage audit. In this snapshot 54% of pages were declining; the tree's precision was 0.64 against a 0.54 base rate and 0.63 for the age rule, and its higher recall came mostly from flagging more pages. We turn the result into a ranked, human-reviewed queue for decision-support, and we make no claim that refreshing a flagged page recovers its traffic.</p>
+</section>
+
+<h2>1. Introduction</h2>
+<p>A content team has more pages losing traffic than hours to fix them. A common rule says older content is stale and should be refreshed first. Before building any model we checked that rule against the data, because a model built on a wrong assumption only reproduces it with more decimals.</p>
+<p>The decision this supports is narrow: which pages a person looks at first this week. It is not a forecast of what happens after a refresh.</p>
+
+<h2>2. Data</h2>
+<p>We used FlyRank's pseudonymised internship release. The main analysis uses its starter file: <strong>30,000 pages from 32 clients</strong>, each with trailing 90-day search metrics, page age, and the last-update date. Client and page identifiers are hashed, and no page text is included. We separately confirmed the data contract on one middle month of the larger warehouse table (9,841,378 page-day rows for March 2026). That month showed Search Console data available on 36.7% of rows and Analytics data on only 4.2%, so we did not build features on Analytics.</p>
+<p><strong>Label.</strong> A page is <em>declining</em> when impressions in the last 30 days are more than 20% below the 30 days before. This is a measured change over two windows already in the past. The share declining is <strong>54.2%</strong> (16,262 pages).</p>
+<p><strong>Excluded.</strong> The trend columns themselves are never features, because the label is built from them. Identifiers are used only for grouping. Pages under 31 days old are not in this slice.</p>
+
+<h2>3. Methodology</h2>
+<p><strong>Signal checks first.</strong> Before writing a rule we grouped pages by age and by traffic volume and printed the group sizes.</p>
+<figure>
+<img src="img/decline_by_age.png" alt="Bar chart: share of pages declining by age tier, falling from 66.9% at 31-90 days to 42.6% at 365+ days, against 54.2% for all pages">
+<figcaption>Decline rate falls steadily with age (n shown on each bar). This is the opposite of the &ldquo;older means stale&rdquo; assumption, so a rule that flags old pages would aim at the wrong group. Traffic volume was a mixed signal (37.6% to 62.6% across four equal-sized tiers, without a clean trend).</figcaption>
+</figure>
+<p><strong>Methods compared.</strong> (a) an age rule that flags pages 31 to 180 days old; (b) a decision tree of depth 4 trained on page age tier and 90-day impressions; (c) flagging every page, as the floor.</p>
+<p><strong>Validation.</strong> Pages from the same client share hidden traits, so a random split can flatter a model. We used five-fold validation grouped by client, so every score comes from clients the model had not seen, and we report the random-split number beside it.</p>
+<p><strong>Leakage audit.</strong> The 90-day impressions column contains the very 30-day windows the label compares (correlation 0.92 with last-30-day impressions), so it fails the timeline test. We rebuilt the features from windows that precede the label window (age, impressions in days 31&ndash;60, and days 61&ndash;90) and compared. As a check on the test itself, adding the label's own source column pushed the score to 1.000, so the harness would catch a serious leak.</p>
+
+<h2>4. Results</h2>
+<table>
+<thead><tr><th>Method (5-fold, grouped by client unless noted)</th><th class="num">Accuracy</th><th class="num">Precision</th><th class="num">Recall</th><th class="num">Share flagged</th></tr></thead>
+<tbody>
+<tr><td>Flag every page (floor)</td><td class="num">0.542</td><td class="num">0.542</td><td class="num">1.000</td><td class="num">1.000</td></tr>
+<tr><td>Age rule, 31&ndash;180 days</td><td class="num">0.562</td><td class="num">0.627</td><td class="num">0.473</td><td class="num">0.409</td></tr>
+<tr><td>Tree: age + 90-day impressions, random split</td><td class="num">0.644</td><td class="num">0.645</td><td class="num">0.763</td><td class="num">0.641</td></tr>
+<tr><td>Tree: age + 90-day impressions</td><td class="num">0.639</td><td class="num">0.636</td><td class="num">0.777</td><td class="num">0.662</td></tr>
+<tr><td>Tree: age only</td><td class="num">0.552</td><td class="num">0.566</td><td class="num">0.739</td><td class="num">0.707</td></tr>
+<tr><td>Tree: age + days 31&ndash;60 + days 61&ndash;90 (no overlap)*</td><td class="num">0.668</td><td class="num">0.645</td><td class="num">0.861</td><td class="num">0.724</td></tr>
+</tbody>
+</table>
+<p class="note">Base rate (share declining) = 0.542. *This row uses a minimum of 50 pages per leaf; the others do not.</p>
+<figure>
+<img src="img/precision_vs_base.png" alt="Horizontal bar chart of precision: random-split tree 0.645, grouped tree 0.636, age rule 0.627, flag every page 0.542">
+<figcaption>The grouped tree's precision is about 9 points above the base rate and within a point of the age rule. Random and grouped splits differ by less than one point here, so we saw no sign of client memorisation for these features.</figcaption>
+</figure>
+<p><strong>What the numbers support.</strong> The tree and the age rule have similar precision. The tree's higher recall (0.78 vs 0.47) comes mainly from flagging more pages (66% vs 41%); flagging every page already gives recall 1.0. Across the five folds the tree averaged precision 0.631 against the rule's 0.608, with the rule ahead in one fold, and the share declining per fold ranged from 0.38 to 0.65. Adding the overlapping 90-day column to the clean features changed accuracy by only about half a point (0.668 to 0.673), so we did not measure a large inflated score from it. Most of the gain over age alone came from impressions in days 31&ndash;60, which are the denominator of the label, so we read the model as a short-horizon momentum signal and not a page lifecycle model.</p>
+<p><strong>Where it is wrong.</strong> Among pages the tree wrongly flagged, 55% were stable and 38% were growing. Among the largest missed decliners, four of five were pages older than 365 days; that pattern comes from five examples and was not tested.</p>
+
+<h2>5. Limitations</h2>
+<ul>
+<li>One snapshot of 32 clients. No page is followed over time, so these are associations in this data, not a forecast.</li>
+<li>The model's precision sits roughly 10 points above the base rate. It is a weak tie-breaker, not a verdict.</li>
+<li>Pages updated in the last 30 days declined less within each age tier (for example 41% against 59% at 181&ndash;365 days). Editors may have chosen which pages to update, and 68% of all pages sit in the 0&ndash;30 day update tier, so this does not show that refreshing causes recovery.</li>
+<li>A few clients dominate the losses: the top five hold about 84% of impressions lost on declining pages. A site-wide event can look like many page problems.</li>
+<li>Analytics data was available for only 4.2% of the March 2026 warehouse rows, so engagement-based claims are out of scope.</li>
+</ul>
+
+<h2>6. Ranked recommendations</h2>
+<p>These are decision-support for a human reviewer, not automation. Each page gets one reason code and one action, and the queue is ranked by impressions lost, with the model's probability as a tie-breaker.</p>
+<table>
+<thead><tr><th>Reason code</th><th>When</th><th>Action</th><th class="num">Pages</th></tr></thead>
+<tbody>
+<tr><td><code>decline_large_loss</code></td><td>declining, lost 500+ impressions</td><td>review for refresh</td><td class="num">4,656</td></tr>
+<tr><td><code>decline_moderate_loss</code></td><td>declining, lost 100&ndash;499</td><td>watch</td><td class="num">4,802</td></tr>
+<tr><td><code>decline_small_loss</code></td><td>declining, lost under 100</td><td>no action</td><td class="num">6,804</td></tr>
+<tr><td><code>not_declining</code></td><td>stable, up, new or flat</td><td>no action</td><td class="num">13,738</td></tr>
+</tbody>
+</table>
+<p>The 100 and 500 cut-offs are first guesses, not tuned values. At 50 pages a week, 4,656 pages would take about 93 weeks to read, so the cut-offs are too loose to act on as written and the weekly capacity does the real selecting. A weekly list of 50 pages with at most 10 per client holds about 13% of all lost impressions. Life stage gives the reviewer a starting hypothesis (untested): young pages, check search intent and indexing; mid-age pages, check outdated facts and links; pages over a year old, consider merging or pruning.</p>
+<figure>
+<img src="img/loss_concentration.png" alt="Line chart: the cumulative share of lost impressions rises to 13% at the top 50 declining pages and 43% at the top 500">
+<figcaption>Lost impressions are concentrated: 500 of 16,262 declining pages hold 43% of them, and the top 50 hold 13%.</figcaption>
+</figure>
+<p><strong>A person checks before acting:</strong> the client-level cause first (4 of 32 clients have at least 75% of their pages declining), then seasonality, work already in progress, data quality for both windows, and whether refresh, merge or prune fits.</p>
+<p><strong>Do not automate:</strong> publishing, rewriting or deleting pages; promising a client that a refresh will recover traffic; acting on a client-wide drop before it is checked; or using the model score alone to include or exclude a page.</p>
+<p><strong>Re-check when:</strong> the share of declining pages moves by more than 10 points, median previous-30-day impressions moves by more than 30%, tree precision on newly measured pages falls below the base rate plus 5 points, or one client holds more than 30% of lost impressions. These thresholds are rules of thumb, not tuned values.</p>
+
+<h2>7. Reproducibility</h2>
+<p>Everything is in the project repository: <a href="https://github.com/sarahibdah/Flyrank-ML-Internship-Sarah">https://github.com/sarahibdah/Flyrank-ML-Internship-Sarah</a>. The analysis uses a fixed random seed and reads the starter file directly from the repo.</p>
+<ul>
+<li><a href="https://github.com/sarahibdah/Flyrank-ML-Internship-Sarah/blob/main/work/notebooks/w04_baseline_score.ipynb">Baseline rule and ranked queue</a></li>
+<li><a href="https://github.com/sarahibdah/Flyrank-ML-Internship-Sarah/blob/main/work/notebooks/w05_model.ipynb">Model against baseline</a></li>
+<li><a href="https://github.com/sarahibdah/Flyrank-ML-Internship-Sarah/blob/main/work/notebooks/w06_validation_audit.ipynb">Validation and leakage audit</a></li>
+<li><a href="https://github.com/sarahibdah/Flyrank-ML-Internship-Sarah/blob/main/work/notebooks/w07_action_playbook.ipynb">Action playbook and exports</a></li>
+</ul>
+
+<h2>8. Acknowledgments and data credit</h2>
+<p>Built on the FlyRank ML Internship dataset, a pseudonymised release of real search and analytics data from <a href="https://flyrank.ai">flyrank.ai</a>. No client names, page addresses, page text or search queries appear on this page. Thanks to the FlyRank internship mentors for the sessions and feedback behind this work.</p>
+
+</main>
+</body>
+</html>
