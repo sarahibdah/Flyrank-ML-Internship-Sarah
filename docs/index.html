@@ -52,7 +52,7 @@
 <h2>3. Methodology</h2>
 <p><strong>Signal checks first.</strong> Before writing a rule we grouped pages by age and by traffic volume and printed the group sizes.</p>
 <figure>
-<img src="img/decline_by_age.png" alt="Bar chart: share of pages declining by age tier, falling from 66.9% at 31-90 days to 42.6% at 365+ days, against 54.2% for all pages">
+<img src="decline_by_age.png" alt="Bar chart: share of pages declining by age tier, falling from 66.9% at 31-90 days to 42.6% at 365+ days, against 54.2% for all pages">
 <figcaption>Decline rate falls steadily with age (n shown on each bar). This is the opposite of the &ldquo;older means stale&rdquo; assumption, so a rule that flags old pages would aim at the wrong group. Traffic volume was a mixed signal (37.6% to 62.6% across four equal-sized tiers, without a clean trend).</figcaption>
 </figure>
 <p><strong>Methods compared.</strong> (a) an age rule that flags pages 31 to 180 days old; (b) a decision tree of depth 4 trained on page age tier and 90-day impressions; (c) flagging every page, as the floor.</p>
@@ -73,7 +73,7 @@
 </table>
 <p class="note">Base rate (share declining) = 0.542. *This row uses a minimum of 50 pages per leaf; the others do not.</p>
 <figure>
-<img src="img/precision_vs_base.png" alt="Horizontal bar chart of precision: random-split tree 0.645, grouped tree 0.636, age rule 0.627, flag every page 0.542">
+<img src="precision_vs_base.png" alt="Horizontal bar chart of precision: random-split tree 0.645, grouped tree 0.636, age rule 0.627, flag every page 0.542">
 <figcaption>The grouped tree's precision is about 9 points above the base rate and within a point of the age rule. Random and grouped splits differ by less than one point here, so we saw no sign of client memorisation for these features.</figcaption>
 </figure>
 <p><strong>What the numbers support.</strong> The tree and the age rule have similar precision. The tree's higher recall (0.78 vs 0.47) comes mainly from flagging more pages (66% vs 41%); flagging every page already gives recall 1.0. Across the five folds the tree averaged precision 0.631 against the rule's 0.608, with the rule ahead in one fold, and the share declining per fold ranged from 0.38 to 0.65. Adding the overlapping 90-day column to the clean features changed accuracy by only about half a point (0.668 to 0.673), so we did not measure a large inflated score from it. Most of the gain over age alone came from impressions in days 31&ndash;60, which are the denominator of the label, so we read the model as a short-horizon momentum signal and not a page lifecycle model.</p>
@@ -101,7 +101,7 @@
 </table>
 <p>The 100 and 500 cut-offs are first guesses, not tuned values. At 50 pages a week, 4,656 pages would take about 93 weeks to read, so the cut-offs are too loose to act on as written and the weekly capacity does the real selecting. A weekly list of 50 pages with at most 10 per client holds about 13% of all lost impressions. Life stage gives the reviewer a starting hypothesis (untested): young pages, check search intent and indexing; mid-age pages, check outdated facts and links; pages over a year old, consider merging or pruning.</p>
 <figure>
-<img src="img/loss_concentration.png" alt="Line chart: the cumulative share of lost impressions rises to 13% at the top 50 declining pages and 43% at the top 500">
+<img src="loss_concentration.png" alt="Line chart: the cumulative share of lost impressions rises to 13% at the top 50 declining pages and 43% at the top 500">
 <figcaption>Lost impressions are concentrated: 500 of 16,262 declining pages hold 43% of them, and the top 50 hold 13%.</figcaption>
 </figure>
 <p><strong>A person checks before acting:</strong> the client-level cause first (4 of 32 clients have at least 75% of their pages declining), then seasonality, work already in progress, data quality for both windows, and whether refresh, merge or prune fits.</p>
